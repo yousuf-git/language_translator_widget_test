@@ -173,18 +173,6 @@
 </div>
 
 <script>
-// Configuration - Using CORS-friendly APIs
-const CONFIG = {
-    // LibreTranslate public instance (CORS enabled)
-    translationAPI: 'https://libretranslate.com/translate',
-    // Alternative: Lingva Translate (Google Translate proxy, CORS enabled)
-    lingvaAPI: 'https://lingva.ml/api/v1',
-    // IP Geolocation (CORS enabled, free)
-    geoAPI: 'https://api.ipgeolocation.io/ipgeo?apiKey=API_KEY', // Needs key
-    // Alternative free geo APIs
-    geoAPIFree: 'https://freeipapi.com/api/json'
-};
-
 // Country to language mapping
 const COUNTRY_TO_LANG = {
     'PK': 'ur', 'SA': 'ar', 'AE': 'ar', 'EG': 'ar', 'ES': 'es',
@@ -193,16 +181,56 @@ const COUNTRY_TO_LANG = {
     'PT': 'pt', 'RU': 'ru', 'JP': 'ja', 'KR': 'ko', 'IT': 'it',
     'TR': 'tr', 'NL': 'nl', 'PL': 'pl', 'US': 'en', 'GB': 'en',
     'CA': 'en', 'AU': 'en', 'BD': 'bn', 'ID': 'id', 'TH': 'th',
-    'VN': 'vi', 'PH': 'tl', 'MY': 'ms', 'IR': 'fa', 'IQ': 'ar'
+    'VN': 'vi', 'PH': 'tl', 'MY': 'ms', 'IR': 'fa', 'IQ': 'ar',
+    'AF': 'fa', 'CL': 'es', 'CO': 'es', 'PE': 'es', 'VE': 'es',
+    'SE': 'sv', 'NO': 'no', 'DK': 'da', 'FI': 'fi', 'GR': 'el',
+    'IL': 'he', 'UA': 'uk', 'CZ': 'cs', 'HU': 'hu', 'RO': 'ro'
 };
 
-// Lingva language codes (maps our codes to Lingva codes)
+// Browser locale to language mapping (for navigator.language)
+const LOCALE_TO_LANG = {
+    'en': 'en', 'en-US': 'en', 'en-GB': 'en', 'en-AU': 'en',
+    'ur': 'ur', 'ur-PK': 'ur',
+    'ar': 'ar', 'ar-SA': 'ar', 'ar-AE': 'ar', 'ar-EG': 'ar',
+    'es': 'es', 'es-ES': 'es', 'es-MX': 'es', 'es-AR': 'es',
+    'fr': 'fr', 'fr-FR': 'fr', 'fr-CA': 'fr',
+    'de': 'de', 'de-DE': 'de', 'de-AT': 'de', 'de-CH': 'de',
+    'zh': 'zh', 'zh-CN': 'zh', 'zh-TW': 'zh', 'zh-Hans': 'zh', 'zh-Hant': 'zh',
+    'hi': 'hi', 'hi-IN': 'hi',
+    'pt': 'pt', 'pt-BR': 'pt', 'pt-PT': 'pt',
+    'ru': 'ru', 'ru-RU': 'ru',
+    'ja': 'ja', 'ja-JP': 'ja',
+    'ko': 'ko', 'ko-KR': 'ko',
+    'it': 'it', 'it-IT': 'it',
+    'tr': 'tr', 'tr-TR': 'tr',
+    'nl': 'nl', 'nl-NL': 'nl',
+    'pl': 'pl', 'pl-PL': 'pl',
+    'bn': 'bn', 'bn-BD': 'bn', 'bn-IN': 'bn',
+    'id': 'id', 'id-ID': 'id',
+    'th': 'th', 'th-TH': 'th',
+    'vi': 'vi', 'vi-VN': 'vi',
+    'fa': 'fa', 'fa-IR': 'fa',
+    'sv': 'sv', 'sv-SE': 'sv',
+    'no': 'no', 'nb': 'no', 'nn': 'no',
+    'da': 'da', 'da-DK': 'da',
+    'fi': 'fi', 'fi-FI': 'fi',
+    'el': 'el', 'el-GR': 'el',
+    'he': 'he', 'he-IL': 'he',
+    'uk': 'uk', 'uk-UA': 'uk',
+    'cs': 'cs', 'cs-CZ': 'cs',
+    'hu': 'hu', 'hu-HU': 'hu',
+    'ro': 'ro', 'ro-RO': 'ro'
+};
+
+// Lingva language codes
 const LINGVA_LANG_MAP = {
     'ur': 'ur', 'ar': 'ar', 'es': 'es', 'fr': 'fr', 'de': 'de',
     'zh': 'zh', 'hi': 'hi', 'pt': 'pt', 'ru': 'ru', 'ja': 'ja',
     'ko': 'ko', 'it': 'it', 'tr': 'tr', 'nl': 'nl', 'pl': 'pl',
     'bn': 'bn', 'id': 'id', 'th': 'th', 'vi': 'vi', 'tl': 'tl',
-    'ms': 'ms', 'fa': 'fa'
+    'ms': 'ms', 'fa': 'fa', 'sv': 'sv', 'no': 'no', 'da': 'da',
+    'fi': 'fi', 'el': 'el', 'he': 'iw', 'uk': 'uk', 'cs': 'cs',
+    'hu': 'hu', 'ro': 'ro'
 };
 
 let currentLang = 'en';
@@ -213,91 +241,267 @@ document.querySelectorAll('.translatable').forEach((el, index) => {
     originalTexts[index] = el.getAttribute('data-original') || el.textContent;
 });
 
-// Detect location by IP and auto-translate
+// ========== BROWSER-BASED DETECTION (NO EXTERNAL API) ==========
+
+// Method 1: Get language from browser's navigator.language
+function getBrowserLanguage() {
+    const browserLang = navigator.language || navigator.userLanguage || navigator.browserLanguage;
+    console.log('Browser language:', browserLang);
+    
+    // Direct match
+    if (LOCALE_TO_LANG[browserLang]) {
+        return { lang: LOCALE_TO_LANG[browserLang], method: 'browser-locale-exact' };
+    }
+    
+    // Try base language (e.g., "en" from "en-US")
+    const baseLang = browserLang.split('-')[0];
+    if (LOCALE_TO_LANG[baseLang]) {
+        return { lang: LOCALE_TO_LANG[baseLang], method: 'browser-locale-base' };
+    }
+    
+    return null;
+}
+
+// Method 2: Get region from Intl API (timezone-based)
+function getRegionFromTimezone() {
+    try {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        console.log('Timezone:', timezone);
+        
+        // Map timezones to countries
+        const tzToCountry = {
+            // Asia
+            'Asia/Karachi': 'PK', 'Asia/Lahore': 'PK',
+            'Asia/Riyadh': 'SA', 'Asia/Dubai': 'AE', 'Asia/Cairo': 'EG',
+            'Asia/Kolkata': 'IN', 'Asia/Mumbai': 'IN', 'Asia/Delhi': 'IN',
+            'Asia/Shanghai': 'CN', 'Asia/Beijing': 'CN', 'Asia/Hong_Kong': 'CN',
+            'Asia/Taipei': 'TW',
+            'Asia/Tokyo': 'JP',
+            'Asia/Seoul': 'KR',
+            'Asia/Bangkok': 'TH',
+            'Asia/Jakarta': 'ID',
+            'Asia/Ho_Chi_Minh': 'VN', 'Asia/Hanoi': 'VN',
+            'Asia/Manila': 'PH',
+            'Asia/Kuala_Lumpur': 'MY', 'Asia/Singapore': 'SG',
+            'Asia/Tehran': 'IR',
+            'Asia/Baghdad': 'IQ',
+            'Asia/Dhaka': 'BD',
+            'Asia/Kabul': 'AF',
+            'Asia/Jerusalem': 'IL', 'Asia/Tel_Aviv': 'IL',
+            'Asia/Istanbul': 'TR',
+            
+            // Europe
+            'Europe/London': 'GB', 'Europe/Dublin': 'GB',
+            'Europe/Paris': 'FR',
+            'Europe/Berlin': 'DE', 'Europe/Munich': 'DE',
+            'Europe/Vienna': 'AT',
+            'Europe/Zurich': 'CH',
+            'Europe/Rome': 'IT', 'Europe/Milan': 'IT',
+            'Europe/Madrid': 'ES', 'Europe/Barcelona': 'ES',
+            'Europe/Lisbon': 'PT',
+            'Europe/Amsterdam': 'NL',
+            'Europe/Brussels': 'BE',
+            'Europe/Warsaw': 'PL',
+            'Europe/Moscow': 'RU', 'Europe/St_Petersburg': 'RU',
+            'Europe/Kiev': 'UA', 'Europe/Kyiv': 'UA',
+            'Europe/Prague': 'CZ',
+            'Europe/Budapest': 'HU',
+            'Europe/Bucharest': 'RO',
+            'Europe/Athens': 'GR',
+            'Europe/Stockholm': 'SE',
+            'Europe/Oslo': 'NO',
+            'Europe/Copenhagen': 'DK',
+            'Europe/Helsinki': 'FI',
+            
+            // Americas
+            'America/New_York': 'US', 'America/Los_Angeles': 'US', 'America/Chicago': 'US',
+            'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+            'America/Mexico_City': 'MX',
+            'America/Sao_Paulo': 'BR', 'America/Rio_de_Janeiro': 'BR',
+            'America/Buenos_Aires': 'AR',
+            'America/Santiago': 'CL',
+            'America/Lima': 'PE',
+            'America/Bogota': 'CO',
+            'America/Caracas': 'VE',
+            
+            // Oceania
+            'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU',
+            'Pacific/Auckland': 'NZ'
+        };
+        
+        if (tzToCountry[timezone]) {
+            const country = tzToCountry[timezone];
+            const lang = COUNTRY_TO_LANG[country] || 'en';
+            return { lang, country, timezone, method: 'timezone' };
+        }
+        
+        // Try to extract region from timezone (e.g., "Asia/Karachi" -> might be Pakistan)
+        const parts = timezone.split('/');
+        if (parts.length === 2) {
+            return { timezone, region: parts[0], city: parts[1], method: 'timezone-partial' };
+        }
+    } catch (e) {
+        console.log('Timezone detection failed:', e);
+    }
+    return null;
+}
+
+// Method 3: Get region from Intl.Locale (modern browsers)
+function getRegionFromIntlLocale() {
+    try {
+        if (typeof Intl.Locale !== 'undefined') {
+            const locale = new Intl.Locale(navigator.language);
+            const region = locale.region;
+            console.log('Intl.Locale region:', region);
+            
+            if (region && COUNTRY_TO_LANG[region]) {
+                return { lang: COUNTRY_TO_LANG[region], country: region, method: 'intl-locale' };
+            }
+        }
+    } catch (e) {
+        console.log('Intl.Locale not supported:', e);
+    }
+    return null;
+}
+
+// Main detection function - tries browser methods first, then external APIs
 async function detectLocationAndTranslate() {
     const statusBar = document.getElementById('statusBar');
     const statusText = document.getElementById('statusText');
     const infoBox = document.getElementById('detectedInfo');
     
-    try {
-        // Try multiple geo APIs for reliability
-        let data = null;
-        
-        // Try freeipapi.com first (CORS friendly)
-        try {
-            const response = await fetch('https://freeipapi.com/api/json', {
-                method: 'GET'
-            });
-            if (response.ok) {
-                data = await response.json();
-                data = {
-                    country_code: data.countryCode,
-                    country_name: data.countryName,
-                    city: data.cityName,
-                    ip: data.ipAddress
-                };
-            }
-        } catch(e) {
-            console.log('freeipapi failed, trying alternative...');
+    let detectedLang = 'en';
+    let detectionMethod = '';
+    let locationInfo = '';
+    
+    // ===== STEP 1: Try browser-based detection (instant, no API calls) =====
+    statusText.textContent = '🔍 Detecting your language...';
+    
+    // Try Intl.Locale first (most accurate for region)
+    let result = getRegionFromIntlLocale();
+    if (result && result.lang && result.lang !== 'en') {
+        detectedLang = result.lang;
+        detectionMethod = result.method;
+        locationInfo = `Region: ${result.country}`;
+    }
+    
+    // Try timezone-based detection
+    if (detectedLang === 'en') {
+        result = getRegionFromTimezone();
+        if (result && result.lang && result.lang !== 'en') {
+            detectedLang = result.lang;
+            detectionMethod = result.method;
+            locationInfo = `Timezone: ${result.timezone || result.city}`;
         }
-        
-        // Fallback to ip-api.com (also CORS friendly)
-        if (!data) {
-            try {
-                const response = await fetch('https://ip-api.com/json/?fields=status,country,countryCode,city,query');
-                if (response.ok) {
-                    const json = await response.json();
-                    if (json.status === 'success') {
-                        data = {
-                            country_code: json.countryCode,
-                            country_name: json.country,
-                            city: json.city,
-                            ip: json.query
-                        };
-                    }
-                }
-            } catch(e) {
-                console.log('ip-api failed too');
-            }
+    }
+    
+    // Try browser language
+    if (detectedLang === 'en') {
+        result = getBrowserLanguage();
+        if (result && result.lang && result.lang !== 'en') {
+            detectedLang = result.lang;
+            detectionMethod = result.method;
+            locationInfo = `Browser: ${navigator.language}`;
         }
+    }
+    
+    // ===== STEP 2: If browser detection found non-English, use it =====
+    if (detectedLang !== 'en') {
+        console.log(`Detected ${detectedLang} via ${detectionMethod}`);
         
-        if (!data || !data.country_code) {
-            throw new Error('Could not get location data');
-        }
-        
-        const country = data.country_code;
-        const city = data.city || 'Unknown';
-        const countryName = data.country_name || country;
-        
-        // Get language for this country
-        const detectedLang = COUNTRY_TO_LANG[country] || 'en';
-        
-        // Update info display
         infoBox.innerHTML = `
-            <strong>IP:</strong> <code>${data.ip || 'Hidden'}</code> | 
-            <strong>Location:</strong> ${city}, ${countryName} | 
-            <strong>Auto-detected:</strong> ${getLanguageName(detectedLang)}
+            <strong>Detection:</strong> ${detectionMethod} | 
+            <strong>${locationInfo}</strong> | 
+            <strong>Language:</strong> ${getLanguageName(detectedLang)}
         `;
         
-        // Update status
         statusBar.className = 'status-bar';
-        statusText.textContent = `📍 Detected: ${countryName} → Auto-selecting ${getLanguageName(detectedLang)}`;
+        statusText.textContent = `📍 Detected: ${getLanguageName(detectedLang)} (via ${detectionMethod})`;
         
-        // Set dropdown and translate if not English
         document.getElementById('langSelect').value = detectedLang;
+        await translatePage(detectedLang);
+        return;
+    }
+    
+    // ===== STEP 3: Fallback to external IP API if browser detection returned English =====
+    // (User might be English speaker OR browser detection didn't work well)
+    statusText.textContent = '🔍 Checking location via IP...';
+    
+    try {
+        let ipData = null;
         
-        if (detectedLang !== 'en') {
-            await translatePage(detectedLang);
-        } else {
-            statusText.textContent = `📍 Location: ${countryName} - Page is in English (no translation needed)`;
+        // Try ip-api.com (CORS friendly, no key needed)
+        try {
+            const response = await fetch('https://ip-api.com/json/?fields=status,country,countryCode,city,query', {
+                signal: AbortSignal.timeout(5000) // 5 second timeout
+            });
+            if (response.ok) {
+                const json = await response.json();
+                if (json.status === 'success') {
+                    ipData = {
+                        country_code: json.countryCode,
+                        country_name: json.country,
+                        city: json.city,
+                        ip: json.query
+                    };
+                }
+            }
+        } catch(e) {
+            console.log('ip-api.com failed:', e.message);
         }
         
+        // Fallback: freeipapi.com
+        if (!ipData) {
+            try {
+                const response = await fetch('https://freeipapi.com/api/json', {
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    ipData = {
+                        country_code: data.countryCode,
+                        country_name: data.countryName,
+                        city: data.cityName,
+                        ip: data.ipAddress
+                    };
+                }
+            } catch(e) {
+                console.log('freeipapi.com failed:', e.message);
+            }
+        }
+        
+        if (ipData && ipData.country_code) {
+            const ipLang = COUNTRY_TO_LANG[ipData.country_code] || 'en';
+            
+            infoBox.innerHTML = `
+                <strong>IP:</strong> <code>${ipData.ip || 'Hidden'}</code> | 
+                <strong>Location:</strong> ${ipData.city || 'Unknown'}, ${ipData.country_name} | 
+                <strong>Language:</strong> ${getLanguageName(ipLang)}
+            `;
+            
+            statusBar.className = 'status-bar';
+            
+            if (ipLang !== 'en') {
+                statusText.textContent = `📍 Location: ${ipData.country_name} → ${getLanguageName(ipLang)}`;
+                document.getElementById('langSelect').value = ipLang;
+                await translatePage(ipLang);
+            } else {
+                statusText.textContent = `📍 Location: ${ipData.country_name} - Page is in English`;
+            }
+            return;
+        }
     } catch (error) {
-        console.error('Geolocation error:', error);
-        statusBar.className = 'status-bar error';
-        statusText.textContent = '⚠️ Could not detect location. Please select language manually.';
-        infoBox.textContent = 'Location detection unavailable - please select your language from the dropdown above.';
+        console.error('IP geolocation error:', error);
     }
+    
+    // ===== STEP 4: All detection failed, show manual selection =====
+    statusBar.className = 'status-bar';
+    statusText.textContent = `📍 Browser language: ${navigator.language} - Page is in English`;
+    infoBox.innerHTML = `
+        <strong>Browser:</strong> ${navigator.language} | 
+        <strong>Timezone:</strong> ${Intl.DateTimeFormat().resolvedOptions().timeZone} |
+        Select your language from the dropdown if needed.
+    `;
 }
 
 // Get language display name
